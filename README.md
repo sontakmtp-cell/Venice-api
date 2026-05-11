@@ -10,7 +10,9 @@ A small Next.js application for creating private image-to-video jobs with the Ve
 - Queue the `grok-imagine-image-to-video-private` model.
 - Store the `queue_id` and `download_url` locally.
 - Poll the job status every 5 seconds.
-- Download the generated video when the job completes.
+- After the app confirms successful video creation and provides a download link, don't click the link immediately. 
+- It's still in the process of creating the video; if the video isn't finished gen, the link will be empty.
+- Wait about 1 minute before clicking the link to download the video. The link is valid for 24 hours.
 
 ## Stack
 
