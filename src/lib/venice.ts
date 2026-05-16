@@ -1,14 +1,18 @@
 export const VENICE_API_BASE_URL = "https://api.venice.ai/api/v1";
 export const VENICE_VIDEO_MODEL = "grok-imagine-image-to-video-private";
+export const VENICE_IMAGE_EDIT_MODEL = "grok-imagine-quality-edit";
 export const VENICE_MODEL_SUPPORTS_ASPECT_RATIO = false;
 
 export const DURATION_OPTIONS = ["5s", "10s"] as const;
 export const RESOLUTION_OPTIONS = ["480p", "720p", "1080p"] as const;
 export const ASPECT_RATIO_OPTIONS = ["1:1", "9:16", "16:9"] as const;
+export const IMAGE_OUTPUT_FORMAT_OPTIONS = ["png", "jpeg", "webp"] as const;
 
 export type DurationOption = (typeof DURATION_OPTIONS)[number];
 export type ResolutionOption = (typeof RESOLUTION_OPTIONS)[number];
 export type AspectRatioOption = (typeof ASPECT_RATIO_OPTIONS)[number];
+export type ImageOutputFormatOption =
+  (typeof IMAGE_OUTPUT_FORMAT_OPTIONS)[number];
 
 export type QueueVideoRequest = {
   prompt: string;
@@ -17,6 +21,12 @@ export type QueueVideoRequest = {
   duration: DurationOption;
   resolution: ResolutionOption;
   aspectRatio?: AspectRatioOption;
+};
+
+export type EditImageRequest = {
+  prompt: string;
+  imageDataUrl: string;
+  outputFormat?: ImageOutputFormatOption;
 };
 
 export type VeniceDebugInfo = {
@@ -41,6 +51,15 @@ export function isAspectRatioOption(value: unknown): value is AspectRatioOption 
   return (
     typeof value === "string" &&
     ASPECT_RATIO_OPTIONS.includes(value as AspectRatioOption)
+  );
+}
+
+export function isImageOutputFormatOption(
+  value: unknown,
+): value is ImageOutputFormatOption {
+  return (
+    typeof value === "string" &&
+    IMAGE_OUTPUT_FORMAT_OPTIONS.includes(value as ImageOutputFormatOption)
   );
 }
 
@@ -133,6 +152,12 @@ export function isImageDataUrl(value: unknown) {
     value.startsWith("data:image/") &&
     value.includes(";base64,")
   );
+}
+
+export function getBase64FromImageDataUrl(value: string) {
+  const marker = ";base64,";
+  const index = value.indexOf(marker);
+  return index === -1 ? "" : value.slice(index + marker.length);
 }
 
 export function isAllowedVeniceDownloadUrl(value: string) {

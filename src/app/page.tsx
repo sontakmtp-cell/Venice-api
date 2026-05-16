@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ASPECT_RATIO_OPTIONS, DURATION_OPTIONS, RESOLUTION_OPTIONS, VENICE_MODEL_SUPPORTS_ASPECT_RATIO, VENICE_VIDEO_MODEL, type AspectRatioOption, type DurationOption, type ResolutionOption, type VeniceDebugInfo, formatVeniceDebugSummary } from "@/lib/venice";
 import { Alert, Badge, Card, FieldLabel, GhostButton, PrimaryButton, SecondaryButton, SectionHeader, Spinner, StatCard } from "./components/ui";
@@ -153,7 +154,15 @@ export default function Home() {
             </div>
             <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">Venice Video</h1>
           </div>
-          <Badge variant="accent">{VENICE_VIDEO_MODEL}</Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="accent">{VENICE_VIDEO_MODEL}</Badge>
+            <Link
+              className="inline-flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
+              href="/image-edit"
+            >
+              Image Edit
+            </Link>
+          </div>
         </div>
       </header>
 
