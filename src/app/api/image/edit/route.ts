@@ -154,6 +154,7 @@ export async function POST(request: Request) {
   return NextResponse.json(
     {
       imageDataUrl,
+      debug,
       model: VENICE_IMAGE_EDIT_MODEL,
       outputFormat,
     },

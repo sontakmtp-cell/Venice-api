@@ -17,7 +17,6 @@ import {
   FieldLabel,
   GhostButton,
   PrimaryButton,
-  SecondaryButton,
   SectionHeader,
   Spinner,
 } from "../components/ui";
@@ -122,7 +121,23 @@ export default function ImageEditPage() {
       }
 
       setEditedImageDataUrl(data.imageDataUrl);
-      setNotice("Image edited successfully.");
+      if (data.debug?.adultModelContentViolation) {
+        setNotice(
+          buildErrorWithDebug(
+            "Image edited, but Venice flagged adult-model content and may have blurred the result.",
+            data.debug,
+          ),
+        );
+      } else if (data.debug?.contentViolation) {
+        setNotice(
+          buildErrorWithDebug(
+            "Image edited, but Venice flagged the request and may have modified the result.",
+            data.debug,
+          ),
+        );
+      } else {
+        setNotice("Image edited successfully.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error while editing image.");
     } finally {
@@ -285,12 +300,6 @@ export default function ImageEditPage() {
                   "Edit Image"
                 )}
               </PrimaryButton>
-              <SecondaryButton
-                disabled={!editedImageDataUrl}
-                onClick={downloadEditedImage}
-              >
-                Download Edited Image
-              </SecondaryButton>
               <GhostButton
                 disabled={!originalImageDataUrl && !editedImageDataUrl}
                 onClick={() => {
@@ -334,10 +343,24 @@ export default function ImageEditPage() {
 
             <Card className="!p-3">
               <div className="mb-3 flex items-center justify-between px-1">
-                <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                  Edited Image
-                </span>
-                {editedImageDataUrl && <Badge variant="success">Ready</Badge>}
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                    Edited Image
+                  </span>
+                  {editedImageDataUrl && <Badge variant="success">Ready</Badge>}
+                </div>
+                <button
+                  className={`inline-flex items-center justify-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-[12px] font-semibold transition-all active:scale-[0.98] ${
+                    editedImageDataUrl
+                      ? "bg-[var(--accent)] text-white shadow-[0_0_18px_rgba(59,130,246,0.28),0_1px_2px_rgba(0,0,0,0.3)] hover:brightness-110"
+                      : "cursor-not-allowed border border-[var(--border)] bg-transparent text-[var(--text-muted)] opacity-40"
+                  }`}
+                  disabled={!editedImageDataUrl}
+                  onClick={downloadEditedImage}
+                  type="button"
+                >
+                  Download
+                </button>
               </div>
               <div className="relative aspect-square overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-elevated)]">
                 {editedImageDataUrl ? (
