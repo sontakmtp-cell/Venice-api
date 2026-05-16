@@ -1,76 +1,30 @@
-# Venice Image-to-Video MVP
+Download the complete source code by clicking the green **Code** button and selecting **Download ZIP**. Once downloaded, extract the ZIP file to a folder.
 
-A small Next.js application for creating private image-to-video jobs with the Venice API.
+Next, visit nodejs.org to download and install Node.js.
 
-## Features
+After installation, go to the project folder. Click on the address bar at the top of the File Explorer, type `cmd`, and press **Enter** to open the Command Prompt in that directory.
 
-- Upload a JPG, PNG, or WebP reference image.
-- Enter a motion prompt and a negative prompt.
-- Choose duration, resolution, and aspect ratio options.
-- Queue the `grok-imagine-image-to-video-private` model.
-- Store the `queue_id` and `download_url` locally.
-- Poll the job status every 5 seconds.
-- After the app confirms successful video creation and provides a download link, don't click the link immediately. 
-- It's still in the process of creating the video; if the video isn't finished gen, the link will be empty.
-- Wait about 1 minute before clicking the link to download the video. The link is valid for 24 hours.
-
-## Stack
-
-- Next.js App Router
-- React
-- TypeScript
-- Tailwind CSS v4
-- Next.js API routes to keep `VENICE_API_KEY` on the server
-
-## Key Files
-
-- `src/app/page.tsx`: single-page user interface
-- `src/app/api/video/queue/route.ts`: queues a Venice video job
-- `src/app/api/video/status/route.ts`: polls Venice job status
-- `src/app/api/video/download/route.ts`: proxies `.mp4` downloads from `download_url`
-- `src/app/api/video/recover/route.ts`: recovers a video by `queue_id`
-- `src/lib/venice.ts`: shared constants, types, and helpers
-
-## Local Setup
-
-1. Create `.env.local`.
-2. Add your Venice API key:
-
-```env
-VENICE_API_KEY=your_venice_api_key_here
+Run the following command:
 ```
-
-3. Install dependencies if needed:
-
-```bash
 npm install
 ```
 
-4. Start the development server:
+Then create a new file named `.env.local` (make sure the name is exactly `.env.local`, including the dot at the beginning). Open this file with Notepad and add the following line:
+```
+VENICE_API_KEY=your_venice_api_key_here
+```
+Save the file.
 
-```bash
+To get your API key, sign up for an account on Venice, add funds to your balance, and generate an API key. Copy the provided key string and paste it into the `.env.local` file.
+
+Now, open the Command Prompt again in the project folder (by clicking the address bar and typing `cmd`). Run:
+```
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000).
+Once the development server is running, open your web browser and go to:
+**http://localhost:3000**
 
-## Usage
+Upload an image, then paste the prompt i saved in the `prompt.txt` file.
 
-1. Upload one JPG, PNG, or WebP image.
-2. Write a concise motion prompt focused on movement.
-3. For an initial test, choose `5s`, `720p`, and `9:16`.
-4. Click `Create Video`.
-5. Wait for automatic polling, or click `Check Status`.
-6. When the status is `completed`, click `Download Video`.
-
-## Notes
-
-- Venice returns `download_url` once when the job is queued, so the app stores it immediately in state and `localStorage`.
-- Polling runs every 5 seconds.
-- The download route only accepts HTTPS URLs from `venice.ai` domains to reduce arbitrary proxy risk.
-- This MVP does not include a database, authentication, or multi-user job history.
-
-## Reference
-
-- [Video Queue API](https://docs.venice.ai/api-reference/endpoint/video/queue)
-- [Video Generation Guide](https://docs.venice.ai/overview/guides/video-generation)
+When the system shows the message *Video created successfully*, it means Grok has accepted the request and started generating the video. At this point, the download link will still point to an empty file. Wait about **1 minute**, then click the download link to get your video.
