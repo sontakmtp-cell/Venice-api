@@ -1,22 +1,19 @@
 import { NextResponse } from "next/server";
 
 import {
+  getErrorMessage,
   getVeniceDebugInfo,
-  VENICE_API_BASE_URL,
-  VENICE_VIDEO_MODEL,
-  getQueueErrorMessage,
   isAspectRatioOption,
-  isDurationOption,
   isDurationAllowedForVideoModel,
-  isImageDataUrl,
+  isDurationOption,
   isResolutionOption,
   isVideoModelOption,
   readResponsePayload,
-  videoModelRequiresImage,
+  VENICE_API_BASE_URL,
+  VENICE_VIDEO_MODEL,
   videoModelSupportsAspectRatio,
-  type QueueVideoRequest,
+  type QuoteVideoRequest,
 } from "@/lib/venice";
-import { appendVideoHistory } from "@/lib/video-history";
 
 export const runtime = "nodejs";
 
@@ -24,28 +21,18 @@ export async function POST(request: Request) {
   const apiKey = process.env.VENICE_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      {
-        error:
-          "VENICE_API_KEY is missing. Create .env.local and add your API key before queuing a video.",
-      },
+      { error: "VENICE_API_KEY is missing, so the video price cannot be quoted." },
       { status: 500 },
     );
   }
 
-  let body: QueueVideoRequest;
+  let body: QuoteVideoRequest;
 
   try {
-    body = (await request.json()) as QueueVideoRequest;
+    body = (await request.json()) as QuoteVideoRequest;
   } catch {
     return NextResponse.json(
       { error: "Invalid body. Could not read the JSON request." },
-      { status: 400 },
-    );
-  }
-
-  if (!body.prompt?.trim()) {
-    return NextResponse.json(
-      { error: "Motion prompt cannot be empty." },
       { status: 400 },
     );
   }
@@ -55,17 +42,6 @@ export async function POST(request: Request) {
   }
 
   const selectedModel = body.model || VENICE_VIDEO_MODEL;
-  const requiresImage = videoModelRequiresImage(selectedModel);
-
-  if (requiresImage && !isImageDataUrl(body.imageDataUrl)) {
-    return NextResponse.json(
-      {
-        error:
-          "The reference image must be a base64 data URL, for example data:image/jpeg;base64,...",
-      },
-      { status: 400 },
-    );
-  }
 
   if (!isDurationOption(body.duration)) {
     return NextResponse.json({ error: "Invalid duration." }, { status: 400 });
@@ -95,7 +71,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const upstreamResponse = await fetch(`${VENICE_API_BASE_URL}/video/queue`, {
+  const upstreamResponse = await fetch(`${VENICE_API_BASE_URL}/video/quote`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -104,9 +80,6 @@ export async function POST(request: Request) {
     cache: "no-store",
     body: JSON.stringify({
       model: selectedModel,
-      prompt: body.prompt.trim(),
-      negative_prompt: body.negativePrompt?.trim() || undefined,
-      image_url: requiresImage ? body.imageDataUrl : undefined,
       duration: body.duration,
       resolution: body.resolution,
       aspect_ratio: videoModelSupportsAspectRatio(selectedModel)
@@ -121,7 +94,7 @@ export async function POST(request: Request) {
   if (!upstreamResponse.ok) {
     return NextResponse.json(
       {
-        error: getQueueErrorMessage(payload, upstreamResponse.status),
+        error: getErrorMessage(payload, "Could not quote the video price."),
         debug,
       },
       { status: upstreamResponse.status },
@@ -130,41 +103,19 @@ export async function POST(request: Request) {
 
   if (typeof payload !== "object" || !payload || Array.isArray(payload)) {
     return NextResponse.json(
-      { error: "Venice returned a response that did not match the expected JSON format." },
+      { error: "Venice returned a quote response that did not match the expected JSON format." },
       { status: 502 },
     );
   }
 
-  const record = payload as Record<string, unknown>;
-  const model =
-    typeof record.model === "string" ? record.model : selectedModel;
-  const queueId = typeof record.queue_id === "string" ? record.queue_id : null;
-  const downloadUrl =
-    typeof record.download_url === "string" ? record.download_url : null;
+  const quote = (payload as Record<string, unknown>).quote;
 
-  if (!queueId) {
+  if (typeof quote !== "number") {
     return NextResponse.json(
-      {
-        error:
-          "Venice returned a successful response without queue_id. Polling cannot continue.",
-      },
+      { error: "Venice returned a quote response without a numeric quote." },
       { status: 502 },
     );
   }
 
-  await appendVideoHistory({
-    model,
-    queueId,
-    downloadUrl,
-    createdAt: new Date().toISOString(),
-  });
-
-  return NextResponse.json(
-    {
-      model,
-      queueId,
-      downloadUrl,
-    },
-    { status: 200 },
-  );
+  return NextResponse.json({ quote }, { status: 200 });
 }

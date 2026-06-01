@@ -13,6 +13,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const downloadUrl = searchParams.get("url");
   const queueId = searchParams.get("queueId") ?? "video";
+  const inline = searchParams.get("inline") === "true";
 
   if (!downloadUrl || !isAllowedVeniceDownloadUrl(downloadUrl)) {
     return NextResponse.json(
@@ -33,11 +34,15 @@ export async function GET(request: Request) {
     );
   }
 
+  const fileName = buildFileName(queueId);
+
   return new NextResponse(upstreamResponse.body, {
     status: 200,
     headers: {
       "Content-Type": upstreamResponse.headers.get("content-type") ?? "video/mp4",
-      "Content-Disposition": `attachment; filename="${buildFileName(queueId)}"`,
+      "Content-Disposition": inline
+        ? `inline; filename="${fileName}"`
+        : `attachment; filename="${fileName}"`,
       "Cache-Control": "no-store",
     },
   });

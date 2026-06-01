@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useRef, useState } from "react";
 
 /* ── Badge ─────────────────────────────────────────────── */
 type BadgeVariant = "default" | "accent" | "success" | "warning" | "danger" | "info";
@@ -38,11 +38,60 @@ export function Card({
   children: ReactNode;
   className?: string;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setCoords({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+  };
+
+  // Filter classes: structural layout/animation vs visual padding
+  const classes = className.split(" ");
+  const structuralClasses = classes
+    .filter(
+      (c) =>
+        c.startsWith("animate-") ||
+        c.startsWith("h-") ||
+        c.startsWith("w-") ||
+        c.startsWith("flex") ||
+        c.startsWith("grid") ||
+        c.startsWith("col-")
+    )
+    .join(" ");
+  const innerClasses = classes.filter((c) => !structuralClasses.includes(c)).join(" ");
+
   return (
     <div
-      className={`rounded-[var(--radius-xl)] border border-[var(--border)] bg-[var(--surface)] p-5 ${className}`}
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`relative p-[1px] rounded-[var(--radius-xl)] transition-all duration-300 group overflow-hidden ${structuralClasses}`}
+      style={{
+        background: isHovered
+          ? `radial-gradient(300px circle at ${coords.x}px ${coords.y}px, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05))`
+          : "rgba(255, 255, 255, 0.06)",
+      }}
     >
-      {children}
+      <div
+        className={`relative rounded-[calc(var(--radius-xl)-1px)] bg-[var(--surface-glass)] backdrop-blur-xl p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_0_0_0_1px_rgba(255,255,255,0.02),0_8px_32px_rgba(0,0,0,0.36)] overflow-hidden h-full w-full ${innerClasses}`}
+      >
+        {/* Spotlight hover body highlight */}
+        <div
+          className="pointer-events-none absolute inset-0 rounded-[calc(var(--radius-xl)-1px)] opacity-0 transition-opacity duration-500"
+          style={{
+            opacity: isHovered ? 1 : 0,
+            background: `radial-gradient(350px circle at ${coords.x}px ${coords.y}px, rgba(255, 255, 255, 0.035), transparent 70%)`,
+          }}
+        />
+        <div className="relative z-10 h-full w-full">{children}</div>
+      </div>
     </div>
   );
 }
@@ -145,14 +194,52 @@ export function StatCard({
   label: string;
   value: string;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [isHovered, setIsHovered] = useState(false);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setCoords({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+  };
+
   return (
-    <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-elevated)] p-3.5">
-      <p className="text-[11px] font-medium tracking-wide text-[var(--text-muted)] uppercase">
-        {label}
-      </p>
-      <p className="mt-1.5 text-[14px] font-semibold text-[var(--text-primary)] break-all">
-        {value}
-      </p>
+    <div
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className="relative p-[1px] rounded-[var(--radius-lg)] transition-all duration-300 group overflow-hidden"
+      style={{
+        background: isHovered
+          ? `radial-gradient(200px circle at ${coords.x}px ${coords.y}px, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.04))`
+          : "rgba(255, 255, 255, 0.05)",
+      }}
+    >
+      <div
+        className="relative rounded-[calc(var(--radius-lg)-1px)] bg-[var(--surface-elevated-glass)] backdrop-blur-md p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),inset_0_0_0_1px_rgba(255,255,255,0.01),0_4px_20px_rgba(0,0,0,0.25)] overflow-hidden"
+      >
+        {/* Spotlight hover body highlight */}
+        <div
+          className="pointer-events-none absolute inset-0 rounded-[calc(var(--radius-lg)-1px)] opacity-0 transition-opacity duration-500"
+          style={{
+            opacity: isHovered ? 1 : 0,
+            background: `radial-gradient(250px circle at ${coords.x}px ${coords.y}px, rgba(255, 255, 255, 0.025), transparent 70%)`,
+          }}
+        />
+        <div className="relative z-10">
+          <p className="text-[11px] font-medium tracking-wide text-[var(--text-muted)] uppercase">
+            {label}
+          </p>
+          <p className="mt-1.5 text-[14px] font-semibold text-[var(--text-primary)] break-all">
+            {value}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

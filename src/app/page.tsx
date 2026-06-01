@@ -3,19 +3,20 @@
 import Image from "next/image";
 import Link from "next/link";
 import { startTransition, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ASPECT_RATIO_OPTIONS, DURATION_OPTIONS, RESOLUTION_OPTIONS, VENICE_MODEL_SUPPORTS_ASPECT_RATIO, VENICE_VIDEO_MODEL, type AspectRatioOption, type DurationOption, type ResolutionOption, type VeniceDebugInfo, formatVeniceDebugSummary } from "@/lib/venice";
+import { ASPECT_RATIO_OPTIONS, RESOLUTION_OPTIONS, VENICE_VIDEO_MODEL, VIDEO_MODEL_OPTIONS, type AspectRatioOption, type DurationOption, type ResolutionOption, type VideoModelOption, type VeniceDebugInfo, formatVeniceDebugSummary, getVideoModelConfig, videoModelRequiresImage, videoModelSupportsAspectRatio } from "@/lib/venice";
 import { Alert, Badge, Card, FieldLabel, GhostButton, PrimaryButton, SecondaryButton, SectionHeader, Spinner, StatCard } from "./components/ui";
 
 type JobStatus = "queued" | "processing" | "completed" | "failed";
-type FormState = { prompt: string; negativePrompt: string; duration: DurationOption; resolution: ResolutionOption; aspectRatio: AspectRatioOption; imageDataUrl: string; imageName: string };
+type FormState = { model: VideoModelOption; prompt: string; negativePrompt: string; duration: DurationOption; resolution: ResolutionOption; aspectRatio: AspectRatioOption; imageDataUrl: string; imageName: string };
 type VideoJob = { model: string; queueId: string; downloadUrl: string | null; prompt: string; negativePrompt: string; duration: DurationOption; resolution: ResolutionOption; aspectRatio: AspectRatioOption; imageDataUrl: string; imageName: string; status: JobStatus; queuedAt: string; updatedAt: string; averageExecutionTime?: number; executionDuration?: number; error?: string };
 type ServerHistoryItem = { model: string; queueId: string; downloadUrl: string | null; createdAt: string };
+type QuoteState = { value: number | null; loading: boolean; error: string | null };
 
 function buildErrorWithDebug(message: string, debug?: VeniceDebugInfo | null) { return `${message}${formatVeniceDebugSummary(debug)}`; }
 
 const STORAGE_KEY = "venice-video-mvp.current-job";
 const STORE_EVENT = "venice-video-mvp:job-change";
-const INITIAL_FORM: FormState = { prompt: "slow cinematic push-in, natural blinking, soft wind in hair, realistic motion", negativePrompt: "blurry, distorted face, flicker, jitter, warped hands, low quality, oversaturated", duration: "5s", resolution: "720p", aspectRatio: "9:16", imageDataUrl: "", imageName: "" };
+const INITIAL_FORM: FormState = { model: VENICE_VIDEO_MODEL, prompt: "slow cinematic push-in, natural blinking, soft wind in hair, realistic motion", negativePrompt: "blurry, distorted face, flicker, jitter, warped hands, low quality, oversaturated", duration: "5s", resolution: "720p", aspectRatio: "9:16", imageDataUrl: "", imageName: "" };
 
 const STATUS_MAP: Record<JobStatus, { label: string; hint: string; variant: "info" | "accent" | "success" | "warning" | "danger" }> = {
   queued: { label: "Queued", hint: "Your request has been submitted. The app checks again every 5 seconds.", variant: "warning" },
@@ -26,8 +27,10 @@ const STATUS_MAP: Record<JobStatus, { label: string; hint: string; variant: "inf
 
 function formatDT(v?: string) { if (!v) return "--"; return new Intl.DateTimeFormat("en-US", { dateStyle: "short", timeStyle: "medium" }).format(new Date(v)); }
 function formatMs(v?: number) { if (!v || Number.isNaN(v)) return "--"; return `${Math.max(1, Math.round(v / 1000))}s`; }
+function formatUsd(v: number) { return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 4 }).format(v); }
 function estRemaining(job: VideoJob | null) { if (!job?.averageExecutionTime || !job.executionDuration) return "--"; const r = job.averageExecutionTime - job.executionDuration; return r <= 0 ? "< 1s" : formatMs(r); }
 function dlHref(url: string, qid: string, v?: string) { const p = new URLSearchParams({ url, queueId: qid }); if (v) p.set("v", v); return `/api/video/download?${p.toString()}`; }
+function streamHref(url: string, qid: string, v?: string) { const p = new URLSearchParams({ url, queueId: qid, inline: "true" }); if (v) p.set("v", v); return `/api/video/download?${p.toString()}`; }
 
 function parseJob(raw: string | null): VideoJob | null {
   if (!raw) return null;
@@ -85,9 +88,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [history, setHistory] = useState<ServerHistoryItem[]>([]);
+  const [quote, setQuote] = useState<QuoteState>({ value: null, loading: false, error: null });
   const polling = useRef(false);
   const snap = useSyncExternalStore(subJob, snapJob, () => "");
   const job = useMemo(() => parseJob(snap || null), [snap]);
+  const modelConfig = getVideoModelConfig(form.model);
+  const modelRequiresImage = videoModelRequiresImage(form.model);
+  const modelSupportsAspectRatio = videoModelSupportsAspectRatio(form.model);
+  const durationOptions = modelConfig.durationOptions;
 
   async function refreshHistory() { try { const r = await fetch("/api/video/history", { cache: "no-store" }); const d = (await r.json()) as { items?: ServerHistoryItem[] }; if (r.ok) setHistory(Array.isArray(d.items) ? d.items : []); } catch {} }
 
@@ -96,6 +104,29 @@ export default function Home() {
 
   useEffect(() => { const t = setTimeout(() => void refreshHistory(), 0); return () => clearTimeout(t); }, []);
   useEffect(() => { if (!job || (job.status !== "queued" && job.status !== "processing")) return; const t = setInterval(() => void pollStatus(job, true), 5000); return () => clearInterval(t); }, [job]);
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      setQuote({ value: null, loading: true, error: null });
+      try {
+        const r = await fetch("/api/video/quote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: form.model,
+            duration: form.duration,
+            resolution: form.resolution,
+            aspectRatio: form.aspectRatio,
+          }),
+        });
+        const d = (await r.json()) as { quote?: number; error?: string };
+        if (!r.ok || typeof d.quote !== "number") throw new Error(d.error ?? "Could not quote the video price.");
+        setQuote({ value: d.quote, loading: false, error: null });
+      } catch (err) {
+        setQuote({ value: null, loading: false, error: err instanceof Error ? err.message : "Could not quote the video price." });
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [form.model, form.duration, form.resolution, form.aspectRatio]);
 
   async function pollStatus(cur: VideoJob, silent = false) {
     if (polling.current) return;
@@ -127,10 +158,10 @@ export default function Home() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); setNotice(null);
-    if (!form.imageDataUrl) { setError("Upload an image before creating a video."); return; }
+    if (modelRequiresImage && !form.imageDataUrl) { setError("Upload an image before creating a video."); return; }
     setSubmitting(true); setError(null);
     try {
-      const r = await fetch("/api/video/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: form.prompt, negativePrompt: form.negativePrompt, imageDataUrl: form.imageDataUrl, duration: form.duration, resolution: form.resolution, aspectRatio: form.aspectRatio }) });
+      const r = await fetch("/api/video/queue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: form.model, prompt: form.prompt, negativePrompt: form.negativePrompt, imageDataUrl: form.imageDataUrl, duration: form.duration, resolution: form.resolution, aspectRatio: form.aspectRatio }) });
       const d = (await r.json()) as { error?: string; model?: string; queueId?: string; downloadUrl?: string | null; debug?: VeniceDebugInfo };
       if (!r.ok || !d.queueId || !d.model) throw new Error(buildErrorWithDebug(d.error ?? "Could not submit the video job.", d.debug));
       const now = new Date().toISOString();
@@ -155,7 +186,7 @@ export default function Home() {
             <h1 className="text-[15px] font-semibold text-[var(--text-primary)]">Venice Video</h1>
           </div>
           <div className="flex items-center gap-3">
-            <Badge variant="accent">{VENICE_VIDEO_MODEL}</Badge>
+            <Badge variant="accent">{tab === "create" ? form.model : (job?.model || VENICE_VIDEO_MODEL)}</Badge>
             <Link
               className="inline-flex items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] px-3 py-2 text-[13px] font-medium text-[var(--text-secondary)] transition hover:border-[var(--border-hover)] hover:text-[var(--text-primary)]"
               href="/image-edit"
@@ -181,14 +212,17 @@ export default function Home() {
           <div className="animate-fade-in grid gap-6 lg:grid-cols-[1fr_320px]">
             <form className="space-y-5" onSubmit={handleSubmit}>
               <Card>
-                <SectionHeader title="Reference Image" description="JPG, PNG, or WebP. Use a clear face, around 1024-1536px." />
+                <SectionHeader
+                  title={modelRequiresImage ? "Reference Image" : "Reference Image"}
+                  description={modelRequiresImage ? "Required for image-to-video models. JPG, PNG, or WebP." : "Not required for text-to-video models."}
+                />
                 <label className="mt-4 flex cursor-pointer items-center gap-4 rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--surface-elevated)] p-4 transition hover:border-[var(--accent)]/30" htmlFor="image">
                   <input id="image" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleImage} type="file" />
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-[var(--accent-dim)]">
                     <svg className="h-5 w-5 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" /></svg>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{form.imageName || "Choose an image to animate"}</p>
+                    <p className="text-[13px] font-medium text-[var(--text-primary)] truncate">{form.imageName || (modelRequiresImage ? "Choose an image to animate" : "Optional image preview only")}</p>
                     <p className="text-[12px] text-[var(--text-muted)]">Drag and drop, or click to browse</p>
                   </div>
                 </label>
@@ -196,6 +230,20 @@ export default function Home() {
 
               <Card>
                 <div className="space-y-4">
+                  <div className="space-y-2">
+                    <FieldLabel htmlFor="model" label="Video Model" hint="Select the Venice model for video generation." />
+                    <select id="model" className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]/40" onChange={(e) => {
+                      const model = e.target.value as VideoModelOption;
+                      const nextDurations = getVideoModelConfig(model).durationOptions;
+                      setForm((c) => ({
+                        ...c,
+                        model,
+                        duration: (nextDurations as readonly string[]).includes(c.duration) ? c.duration : nextDurations[0],
+                      }));
+                    }} value={form.model}>
+                      {VIDEO_MODEL_OPTIONS.map((o) => <option key={o} value={o}>{getVideoModelConfig(o).label}</option>)}
+                    </select>
+                  </div>
                   <div className="space-y-2">
                     <FieldLabel htmlFor="prompt" label="Motion Prompt" hint="Camera, subject, and environment." />
                     <textarea id="prompt" className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3.5 py-3 text-[13px] leading-relaxed text-[var(--text-primary)] outline-none transition placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]/40 resize-none" rows={3} onChange={(e) => setForm((c) => ({ ...c, prompt: e.target.value }))} placeholder="slow camera push-in, natural blinking..." value={form.prompt} />
@@ -212,7 +260,7 @@ export default function Home() {
                   <div className="space-y-2">
                     <FieldLabel htmlFor="dur" label="Duration" />
                     <select id="dur" className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]/40" onChange={(e) => setForm((c) => ({ ...c, duration: e.target.value as DurationOption }))} value={form.duration}>
-                      {DURATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                      {durationOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
@@ -222,12 +270,20 @@ export default function Home() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <FieldLabel htmlFor="ar" label="Aspect Ratio" hint={VENICE_MODEL_SUPPORTS_ASPECT_RATIO ? undefined : "This model does not support aspect ratio controls."} />
-                    <select id="ar" className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]/40 disabled:opacity-40" disabled={!VENICE_MODEL_SUPPORTS_ASPECT_RATIO} onChange={(e) => setForm((c) => ({ ...c, aspectRatio: e.target.value as AspectRatioOption }))} value={form.aspectRatio}>
+                    <FieldLabel htmlFor="ar" label="Aspect Ratio" hint={modelSupportsAspectRatio ? undefined : "This model does not support aspect ratio controls."} />
+                    <select id="ar" className="w-full rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2.5 text-[13px] text-[var(--text-primary)] outline-none transition focus:border-[var(--accent)]/40 disabled:opacity-40" disabled={!modelSupportsAspectRatio} onChange={(e) => setForm((c) => ({ ...c, aspectRatio: e.target.value as AspectRatioOption }))} value={form.aspectRatio}>
                       {ASPECT_RATIO_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                 </div>
+              </Card>
+
+              <Card>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <SectionHeader title="Estimated Price" description="Quote from Venice before submitting the job." />
+                  <Badge variant={quote.error ? "warning" : "success"}>{quote.loading ? "Checking..." : quote.value !== null ? formatUsd(quote.value) : "Unavailable"}</Badge>
+                </div>
+                {quote.error && <p className="mt-3 text-[12px] leading-relaxed text-[var(--text-muted)]">{quote.error}</p>}
               </Card>
 
               <div className="flex gap-3">
@@ -244,6 +300,34 @@ export default function Home() {
                     <Image alt="Preview" className="h-full w-full object-cover" fill sizes="320px" src={job?.imageDataUrl || form.imageDataUrl} unoptimized />
                   ) : (
                     <div className="flex h-full items-center justify-center p-6 text-center text-[12px] text-[var(--text-muted)]">Image preview will appear here</div>
+                  )}
+                </div>
+              </Card>
+              {/* Video preview */}
+              <Card className="!p-3">
+                <div className="relative aspect-video overflow-hidden rounded-[var(--radius-md)] bg-[var(--surface-elevated)]">
+                  {job?.status === "completed" && job.downloadUrl ? (
+                    <video
+                      autoPlay
+                      className="h-full w-full object-contain"
+                      controls
+                      loop
+                      muted
+                      playsInline
+                      src={streamHref(job.downloadUrl, job.queueId, job.updatedAt ?? job.queuedAt)}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <div className="flex h-full items-center justify-center p-6 text-center text-[12px] text-[var(--text-muted)]">
+                      {job && (job.status === "queued" || job.status === "processing") ? (
+                        <span className="flex items-center gap-2">
+                          <Spinner /> Rendering video...
+                        </span>
+                      ) : (
+                        "Video preview will appear here"
+                      )}
+                    </div>
                   )}
                 </div>
               </Card>

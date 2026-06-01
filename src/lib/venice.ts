@@ -1,23 +1,86 @@
 export const VENICE_API_BASE_URL = "https://api.venice.ai/api/v1";
-export const VENICE_VIDEO_MODEL = "grok-imagine-image-to-video-private";
+export const VIDEO_MODEL_OPTIONS = [
+  "grok-imagine-image-to-video-private",
+  "grok-imagine-1-5-image-to-video-private",
+  "seedance-2-0-image-to-video",
+  "seedance-2-0-text-to-video",
+] as const;
+export const VENICE_VIDEO_MODEL = VIDEO_MODEL_OPTIONS[0];
 export const VENICE_IMAGE_EDIT_MODEL = "grok-imagine-quality-edit";
 export const VENICE_MODEL_SUPPORTS_ASPECT_RATIO = false;
 
-export const DURATION_OPTIONS = ["5s", "10s"] as const;
+export const DURATION_OPTIONS = [
+  "4s",
+  "5s",
+  "6s",
+  "7s",
+  "8s",
+  "9s",
+  "10s",
+  "11s",
+  "12s",
+  "13s",
+  "14s",
+  "15s",
+] as const;
 export const RESOLUTION_OPTIONS = ["480p", "720p", "1080p"] as const;
 export const ASPECT_RATIO_OPTIONS = ["1:1", "9:16", "16:9"] as const;
 export const IMAGE_OUTPUT_FORMAT_OPTIONS = ["png", "jpeg", "webp"] as const;
 
+export type VideoModelOption = (typeof VIDEO_MODEL_OPTIONS)[number];
 export type DurationOption = (typeof DURATION_OPTIONS)[number];
 export type ResolutionOption = (typeof RESOLUTION_OPTIONS)[number];
 export type AspectRatioOption = (typeof ASPECT_RATIO_OPTIONS)[number];
 export type ImageOutputFormatOption =
   (typeof IMAGE_OUTPUT_FORMAT_OPTIONS)[number];
 
+export const VIDEO_MODEL_CONFIGS = {
+  "grok-imagine-image-to-video-private": {
+    label: "Grok Imagine I2V Private",
+    inputMode: "image",
+    supportsAspectRatio: false,
+    durationOptions: ["5s", "10s"],
+  },
+  "grok-imagine-1-5-image-to-video-private": {
+    label: "Grok Imagine 1.5 I2V Private",
+    inputMode: "image",
+    supportsAspectRatio: false,
+    durationOptions: ["5s", "10s"],
+  },
+  "seedance-2-0-image-to-video": {
+    label: "Seedance 2.0 Image to Video",
+    inputMode: "image",
+    supportsAspectRatio: false,
+    durationOptions: DURATION_OPTIONS,
+  },
+  "seedance-2-0-text-to-video": {
+    label: "Seedance 2.0 Text to Video",
+    inputMode: "text",
+    supportsAspectRatio: true,
+    durationOptions: DURATION_OPTIONS,
+  },
+} as const satisfies Record<
+  VideoModelOption,
+  {
+    label: string;
+    inputMode: "image" | "text";
+    supportsAspectRatio: boolean;
+    durationOptions: readonly DurationOption[];
+  }
+>;
+
 export type QueueVideoRequest = {
+  model?: VideoModelOption;
   prompt: string;
   negativePrompt?: string;
-  imageDataUrl: string;
+  imageDataUrl?: string;
+  duration: DurationOption;
+  resolution: ResolutionOption;
+  aspectRatio?: AspectRatioOption;
+};
+
+export type QuoteVideoRequest = {
+  model?: VideoModelOption;
   duration: DurationOption;
   resolution: ResolutionOption;
   aspectRatio?: AspectRatioOption;
@@ -36,8 +99,37 @@ export type VeniceDebugInfo = {
   hostName: string | null;
 };
 
+export function isVideoModelOption(value: unknown): value is VideoModelOption {
+  return (
+    typeof value === "string" &&
+    VIDEO_MODEL_OPTIONS.includes(value as VideoModelOption)
+  );
+}
+
+export function getVideoModelConfig(model: VideoModelOption) {
+  return VIDEO_MODEL_CONFIGS[model];
+}
+
+export function videoModelRequiresImage(model: VideoModelOption) {
+  return getVideoModelConfig(model).inputMode === "image";
+}
+
+export function videoModelSupportsAspectRatio(model: VideoModelOption) {
+  return getVideoModelConfig(model).supportsAspectRatio;
+}
+
+export function isDurationAllowedForVideoModel(
+  model: VideoModelOption,
+  duration: DurationOption,
+) {
+  return (getVideoModelConfig(model).durationOptions as readonly string[]).includes(duration);
+}
+
 export function isDurationOption(value: unknown): value is DurationOption {
-  return typeof value === "string" && DURATION_OPTIONS.includes(value as DurationOption);
+  return (
+    typeof value === "string" &&
+    DURATION_OPTIONS.includes(value as DurationOption)
+  );
 }
 
 export function isResolutionOption(value: unknown): value is ResolutionOption {
